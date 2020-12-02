@@ -14,8 +14,12 @@ func TestSuccessfulHandshakeShouldCreatePod(t *testing.T) {
 		assert.FailNow(t, "failed to create configuration from the current users kubeconfig", err)
 	}
 
-	_, err = kuberun.New(config)
-	if err != nil {
-		assert.FailNow(t, "failed to create handler", err)
-	}
+	kr, err := kuberun.New(config)
+	assert.Nil(t, err, "failed to create handler", err)
+	defer kr.OnDisconnect()
+
+	_, err = kr.OnHandshakeSuccess("test")
+	assert.Nil(t, err, "failed to create handshake handler", err)
+
+	//TODO add tests
 }
