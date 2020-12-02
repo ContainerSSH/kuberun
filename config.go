@@ -22,7 +22,7 @@ type ConnectionConfig struct {
 	Insecure   bool   `json:"insecure" yaml:"insecure" comment:"Server should be accessed without verifying the TLS certificate." default:"false"`
 	ServerName string `json:"serverName" yaml:"serverName" comment:"ServerName is passed to the server for SNI and is used in the client to check server certificates against."`
 
-	CertFile string `json:"certFile" yaml:"certFile" comment:"File containing client certificate for TLS client certificate authentication." default:"/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"`
+	CertFile string `json:"certFile" yaml:"certFile" comment:"File containing client certificate for TLS client certificate authentication."`
 	KeyFile  string `json:"keyFile" yaml:"keyFile" comment:"File containing client key for TLS client certificate authentication"`
 	CAFile   string `json:"cacertFile" yaml:"cacertFile" comment:"File containing trusted root certificates for the server"`
 
@@ -44,4 +44,5 @@ type PodConfig struct {
 	Spec                   v1.PodSpec        `json:"podSpec" yaml:"podSpec" comment:"Pod specification to launch" default:"{\"containers\":[{\"name\":\"shell\",\"image\":\"containerssh/containerssh-guest-image\"}]}"`
 	Subsystems             map[string]string `json:"subsystems" yaml:"subsystems" comment:"Subsystem names and binaries map." default:"{\"sftp\":\"/usr/lib/openssh/sftp-server\"}"`
 	DisableCommand         bool              `json:"disableCommand" yaml:"disableCommand" comment:"Disable command execution passed from SSH"`
+	IdleCommand            []string          `json:"idleCommand" yaml:"idleCommand" comment:"Run this command to wait for container exit" default:"[\"/bin/sh\", \"-c\", \"sleep infinity & PID=$!; trap \\\"kill $PID\\\" INT TERM; wait\"]"`
 }

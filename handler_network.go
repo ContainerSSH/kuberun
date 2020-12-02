@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	goLog "log"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/containerssh/log"
 	"github.com/containerssh/sshserver"
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -20,7 +22,6 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	watchTools "k8s.io/client-go/tools/watch"
-	"k8s.io/kubectl/pkg/util/interrupt"
 )
 
 type networkHandler struct {
@@ -38,6 +39,7 @@ type networkHandler struct {
 	pod         *core.Pod
 	cancelStart func()
 	labels      map[string]string
+	logger      log.Logger
 }
 
 func (n *networkHandler) OnAuthPassword(_ string, _ []byte) (response sshserver.AuthResponse, reason error) {
@@ -79,10 +81,6 @@ func (n *networkHandler) isPodAvailableEvent(event watch.Event) (bool, error) {
 
 //This function waits for a pod to be either running or already complete.
 func (n *networkHandler) waitForPodAvailable(ctx context.Context, pod *core.Pod) (result *core.Pod, err error) {
-	timeoutContext, cancelTimeoutContext := watchTools.ContextWithOptionalTimeout(
-		ctx, n.config.Timeout,
-	)
-	defer cancelTimeoutContext()
 
 	fieldSelector := fields.
 		OneTermEqualSelector("metadata.name", pod.Name).
@@ -104,63 +102,62 @@ func (n *networkHandler) waitForPodAvailable(ctx context.Context, pod *core.Pod)
 		},
 	}
 
-	err = interrupt.
-		New(nil, cancelTimeoutContext).
-		Run(
-			func() error {
-				event, err := watchTools.UntilWithSync(
-					timeoutContext,
-					listWatch,
-					&core.Pod{},
-					nil,
-					n.isPodAvailableEvent,
-				)
-				if event != nil {
-					result = event.Object.(*core.Pod)
-				}
-				return err
-			},
-		)
-
+	event, err := watchTools.UntilWithSync(
+		ctx,
+		listWatch,
+		&core.Pod{},
+		nil,
+		n.isPodAvailableEvent,
+	)
+	if event != nil {
+		result = event.Object.(*core.Pod)
+	}
 	return result, err
 }
 
 func (n *networkHandler) OnHandshakeSuccess(username string) (connection sshserver.SSHConnectionHandler, failureReason error) {
 	n.mutex.Lock()
-	defer n.mutex.Unlock()
-
-	ctx, cancelFunc := context.WithTimeout(context.Background(), n.config.Timeout)
-	n.cancelStart = cancelFunc
-
 	if n.pod != nil {
+		n.mutex.Unlock()
 		return nil, fmt.Errorf("handshake already complete")
 	}
 
+	ctx, cancelFunc := context.WithTimeout(context.Background(), n.config.Timeout)
+	n.cancelStart = cancelFunc
+	defer func() {
+		n.cancelStart = nil
+		n.mutex.Unlock()
+	}()
+
+	goLogger := log.NewGoLogWriter(n.logger)
+	oldFlags := goLog.Flags()
+	oldOutput := goLog.Writer()
+	oldPrefix := goLog.Prefix()
+
+	goLog.SetFlags(0)
+	goLog.SetOutput(goLogger)
+	goLog.SetPrefix("")
+	defer func() {
+		goLog.SetFlags(oldFlags)
+		goLog.SetOutput(oldOutput)
+		goLog.SetPrefix(oldPrefix)
+	}()
+	// TODO set logger redirection because the Kubernetes libraries log using the default logger.
+
 	spec := n.config.Pod.Spec
 
+	spec.Containers[n.config.Pod.ConsoleContainerNumber].Command = n.config.Pod.IdleCommand
 	n.labels = map[string]string{
 		"containerssh_connection_id": hex.EncodeToString(n.connectionID),
 		"containerssh_ip":            n.client.IP.String(),
 		"containerssh_username":      username,
 	}
 
-	pod, err := n.cli.CoreV1().Pods(n.config.Pod.Namespace).Create(
-		ctx,
-		&core.Pod{
-			ObjectMeta: meta.ObjectMeta{
-				GenerateName: "containerssh-",
-				Namespace:    n.config.Pod.Namespace,
-				Labels:       n.labels,
-			},
-			Spec: spec,
-		},
-		meta.CreateOptions{},
-	)
+	pod, err := n.createPod(ctx, spec)
+	n.pod = pod
 	if err != nil {
 		return nil, err
 	}
-
-	n.pod = pod
 
 	n.mutex.Unlock()
 	pod, err = n.waitForPodAvailable(ctx, pod)
@@ -175,15 +172,44 @@ func (n *networkHandler) OnHandshakeSuccess(username string) (connection sshserv
 	}, nil
 }
 
+func (n *networkHandler) createPod(ctx context.Context, spec core.PodSpec) (pod *core.Pod, err error) {
+	for {
+		pod, err = n.cli.CoreV1().Pods(n.config.Pod.Namespace).Create(
+			ctx,
+			&core.Pod{
+				ObjectMeta: meta.ObjectMeta{
+					GenerateName: "containerssh-",
+					Namespace:    n.config.Pod.Namespace,
+					Labels:       n.labels,
+				},
+				Spec: spec,
+			},
+			meta.CreateOptions{},
+		)
+		if err == nil {
+			return pod, err
+		} else {
+			select {
+			case <-ctx.Done():
+				n.logger.Errorf("failed to create pod, giving up (%v)", err)
+				return pod, err
+			default:
+				n.logger.Warningf("failed to create pod, retrying in 10 seconds (%v)", err)
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}
+}
+
 func (n *networkHandler) OnDisconnect() {
 	n.mutex.Lock()
-	defer n.mutex.Unlock()
 
-	//TODO shutdown timeout handling
-	shutdownContext := context.TODO()
+	shutdownContext, cancelFunc := context.WithTimeout(context.Background(), n.config.Timeout)
 
 	success := true
-	for i := 0; i < 6; i++ {
+	var lastError error
+	for {
+		lastError = nil
 		if n.pod != nil {
 			if n.cancelStart != nil {
 				n.cancelStart()
@@ -198,17 +224,25 @@ func (n *networkHandler) OnDisconnect() {
 				Body(&meta.DeleteOptions{})
 			result := request.Do(shutdownContext)
 			if result.Error() != nil {
-				//TODO add log
+				n.logger.Warningf("failed to remove pod, retrying in 10 seconds (%v)", result.Error())
+				lastError = result.Error()
 				n.mutex.Unlock()
-				time.Sleep(10 * time.Second)
-				n.mutex.Lock()
+				select {
+				case <-shutdownContext.Done():
+					break
+				default:
+					time.Sleep(10 * time.Second)
+					n.mutex.Lock()
+				}
 			} else {
 				success = true
+				n.mutex.Unlock()
 				break
 			}
 		}
 	}
 	if !success {
-		//TODO add log
+		n.logger.Errorf("failed to remove pod, giving up (%v)", lastError)
 	}
+	cancelFunc()
 }

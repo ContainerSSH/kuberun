@@ -1,13 +1,18 @@
 package kuberun
 
 import (
+	"context"
+	"net"
+	"sync"
+
+	"github.com/containerssh/log"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
 )
 
-func New(config Config) (*networkHandler, error) {
+func New(config Config, connectionID []byte, client net.TCPAddr, logger log.Logger) (*networkHandler, error) {
 	connectionConfig := createConnectionConfig(config)
 
 	cli, err := kubernetes.NewForConfig(&connectionConfig)
@@ -21,8 +26,18 @@ func New(config Config) (*networkHandler, error) {
 	}
 
 	return &networkHandler{
-		cli:        cli,
-		restClient: restClient,
+		mutex:        &sync.Mutex{},
+		client:       client,
+		connectionID: connectionID,
+		config:       config,
+		onDisconnect: map[uint64]func(){},
+		onShutdown:   map[uint64]func(shutdownContext context.Context){},
+		cli:          cli,
+		restClient:   restClient,
+		pod:          nil,
+		cancelStart:  nil,
+		labels:       nil,
+		logger:       logger,
 	}, nil
 }
 

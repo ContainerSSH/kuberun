@@ -1,4 +1,4 @@
-package kuberun_test
+package kuberun
 
 import (
 	"encoding/base64"
@@ -9,32 +9,30 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v2"
-
-	"github.com/containerssh/kuberun"
 )
 
-func createConfigFromKubeConfig() (config kuberun.Config, err error) {
+func setConfigFromKubeConfig(config *Config) (err error) {
 	usr, err := user.Current()
 	if err != nil {
-		return config, err
+		return err
 	}
 	kubectlConfig, err := readKubeConfig(filepath.Join(usr.HomeDir, ".kube", "config"))
 	if err != nil {
-		return config, fmt.Errorf("failed to read kubeconfig (%w)", err)
+		return fmt.Errorf("failed to read kubeconfig (%w)", err)
 	}
 	context := extractKubeConfigContext(kubectlConfig, kubectlConfig.CurrentContext)
 	if context == nil {
-		return config, fmt.Errorf("failed to find current kubeConfigContext in kubeConfig")
+		return fmt.Errorf("failed to find current context in kubeConfig")
 	}
 
 	kubeConfigUser := extractKubeConfigUser(kubectlConfig, context.Context.User)
 	if kubeConfigUser == nil {
-		return config, fmt.Errorf("failed to find kubeConfigUser in kubeConfig")
+		return fmt.Errorf("failed to find user in kubeConfig")
 	}
 
 	kubeConfigCluster := extractKubeConfigCluster(kubectlConfig, context.Context.Cluster)
 	if kubeConfigCluster == nil {
-		return config, fmt.Errorf("failed to find kubeConfigCluster in kubeConfig")
+		return fmt.Errorf("failed to find cluster in kubeConfig")
 	}
 
 	config.Connection.Host = strings.Replace(
@@ -43,11 +41,11 @@ func createConfigFromKubeConfig() (config kuberun.Config, err error) {
 		"",
 		1,
 	)
-	if err = configureCertificates(kubeConfigCluster, kubeConfigUser, &config); err != nil {
-		return config, err
+	if err = configureCertificates(kubeConfigCluster, kubeConfigUser, config); err != nil {
+		return err
 	}
 
-	return config, nil
+	return nil
 }
 
 func extractKubeConfigContext(kubectlConfig kubeConfig, currentContext string) *kubeConfigContext {
@@ -64,7 +62,7 @@ func extractKubeConfigContext(kubectlConfig kubeConfig, currentContext string) *
 func configureCertificates(
 	kubeConfigCluster *kubeConfigCluster,
 	kubeConfigUser *kubeConfigUser,
-	config *kuberun.Config,
+	config *Config,
 ) error {
 	decodedCa, err := base64.StdEncoding.DecodeString(
 		kubeConfigCluster.Cluster.CertificateAuthorityData,
@@ -74,21 +72,27 @@ func configureCertificates(
 	}
 	config.Connection.CAData = string(decodedCa)
 
-	decodedKey, err := base64.StdEncoding.DecodeString(
-		kubeConfigUser.User.ClientKeyData,
-	)
-	if err != nil {
-		return err
+	if kubeConfigUser.User.ClientKeyData != "" {
+		decodedKey, err := base64.StdEncoding.DecodeString(
+			kubeConfigUser.User.ClientKeyData,
+		)
+		if err != nil {
+			return err
+		}
+		config.Connection.KeyData = string(decodedKey)
 	}
-	config.Connection.KeyData = string(decodedKey)
 
-	decodedCert, err := base64.StdEncoding.DecodeString(
-		kubeConfigUser.User.ClientCertificateData,
-	)
-	if err != nil {
-		return err
+	if kubeConfigUser.User.ClientCertificateData != "" {
+		decodedCert, err := base64.StdEncoding.DecodeString(
+			kubeConfigUser.User.ClientCertificateData,
+		)
+		if err != nil {
+			return err
+		}
+		config.Connection.CertData = string(decodedCert)
 	}
-	config.Connection.CertData = string(decodedCert)
+
+	config.Connection.BearerToken = kubeConfigUser.User.Token
 	return nil
 }
 
@@ -118,7 +122,7 @@ type kubeConfig struct {
 	ApiVersion     string              `yaml:"apiVersion" default:"v1"`
 	Clusters       []kubeConfigCluster `yaml:"clusters"`
 	Contexts       []kubeConfigContext `yaml:"contexts"`
-	CurrentContext string              `yaml:"current-kubeConfigContext"`
+	CurrentContext string              `yaml:"current-context"`
 	Kind           string              `yaml:"kind" default:"Config"`
 	Preferences    map[string]string   `yaml:"preferences"`
 	Users          []kubeConfigUser    `yaml:"users"`
@@ -129,15 +133,15 @@ type kubeConfigCluster struct {
 	Cluster struct {
 		CertificateAuthorityData string `yaml:"certificate-authority-data"`
 		Server                   string `yaml:"server"`
-	} `yaml:"kubeConfigCluster"`
+	} `yaml:"cluster"`
 }
 
 type kubeConfigContext struct {
 	Name    string `yaml:"name"`
 	Context struct {
-		Cluster string `yaml:"kubeConfigCluster"`
-		User    string `yaml:"kubeConfigUser"`
-	} `yaml:"kubeConfigContext"`
+		Cluster string `yaml:"cluster"`
+		User    string `yaml:"user"`
+	} `yaml:"context"`
 }
 
 type kubeConfigUser struct {
@@ -145,7 +149,8 @@ type kubeConfigUser struct {
 	User struct {
 		ClientCertificateData string `yaml:"client-certificate-data"`
 		ClientKeyData         string `yaml:"client-key-data"`
-	} `yaml:"kubeConfigUser"`
+		Token                 string `yaml:"token"`
+	} `yaml:"user"`
 }
 
 func readKubeConfig(file string) (config kubeConfig, err error) {
