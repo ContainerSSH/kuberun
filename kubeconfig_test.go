@@ -49,14 +49,15 @@ func setConfigFromKubeConfig(config *Config) (err error) {
 }
 
 func extractKubeConfigContext(kubectlConfig kubeConfig, currentContext string) *kubeConfigContext {
-	var context *kubeConfigContext
+	var kubeContext *kubeConfigContext
 	for _, ctx := range kubectlConfig.Contexts {
 		if ctx.Name == currentContext {
-			context = &ctx
+			currentKubeContext := ctx
+			kubeContext = &currentKubeContext
 			break
 		}
 	}
-	return context
+	return kubeContext
 }
 
 func configureCertificates(
@@ -100,7 +101,8 @@ func extractKubeConfigCluster(kubectlConfig kubeConfig, clusterName string) *kub
 	var kubeConfigCluster *kubeConfigCluster
 	for _, c := range kubectlConfig.Clusters {
 		if c.Name == clusterName {
-			kubeConfigCluster = &c
+			currentKubeConfigCluster := c
+			kubeConfigCluster = &currentKubeConfigCluster
 			break
 		}
 	}
@@ -111,7 +113,8 @@ func extractKubeConfigUser(kubectlConfig kubeConfig, userName string) *kubeConfi
 	var kubeConfigUser *kubeConfigUser
 	for _, u := range kubectlConfig.Users {
 		if u.Name == userName {
-			kubeConfigUser = &u
+			currentConfigUser := u
+			kubeConfigUser = &currentConfigUser
 			break
 		}
 	}
