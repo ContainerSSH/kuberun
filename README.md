@@ -1,4 +1,5 @@
 [![ContainerSSH - Launch Containers on Demand](https://containerssh.github.io/images/logo-for-embedding.svg)](https://containerssh.github.io/)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FContainerSSH%2Fkuberun.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FContainerSSH%2Fkuberun?ref=badge_shield)
 
 <!--suppress HtmlDeprecatedAttribute -->
 <h1 align="center">ContainerSSH Kubernetes Library</h1>
@@ -45,3 +46,6 @@ This will launch a pod. Conversely, the `handler.OnDisconnect()` will destroy th
 The `sshConnection` can be used to create session channels and launch programs as described in the [sshserver library](https://github.com/containerssh/sshserver).
 
 **Note:** This library does not perform authentication. Instead, it will always `sshserver.AuthResponseUnavailable`.
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FContainerSSH%2Fkuberun.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FContainerSSH%2Fkuberun?ref=badge_large)
