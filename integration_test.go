@@ -32,6 +32,7 @@ func randomID() []byte {
 func TestSuccessfulHandshakeShouldCreatePod(t *testing.T) {
 	config := Config{}
 	err := defaults.Set(&config)
+	assert.Nil(t, err, "failed to set defaults (%v)", err)
 
 	config.Pod.Spec.Containers[0].Image = "docker.io/library/busybox"
 
@@ -68,6 +69,7 @@ func TestSuccessfulHandshakeShouldCreatePod(t *testing.T) {
 func TestSingleSessionShouldRunProgram(t *testing.T) {
 	config := Config{}
 	err := defaults.Set(&config)
+	assert.Nil(t, err, "failed to set defaults (%v)", err)
 
 	config.Pod.Spec.Containers[0].Image = "docker.io/library/busybox"
 
@@ -119,6 +121,7 @@ func TestSingleSessionShouldRunProgram(t *testing.T) {
 func TestCommandExecutionShouldReturnStatusCode(t *testing.T) {
 	config := Config{}
 	err := defaults.Set(&config)
+	assert.Nil(t, err, "failed to set defaults (%v)", err)
 
 	config.Pod.Spec.Containers[0].Image = "docker.io/library/busybox"
 

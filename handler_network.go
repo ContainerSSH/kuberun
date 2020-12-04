@@ -67,12 +67,10 @@ func (n *networkHandler) isPodAvailableEvent(event watch.Event) (bool, error) {
 			return true, nil
 		case core.PodRunning:
 			conditions := eventObject.Status.Conditions
-			if conditions != nil {
-				for _, condition := range conditions {
-					if condition.Type == core.PodReady &&
-						condition.Status == core.ConditionTrue {
-						return true, nil
-					}
+			for _, condition := range conditions {
+				if condition.Type == core.PodReady &&
+					condition.Status == core.ConditionTrue {
+					return true, nil
 				}
 			}
 		}
@@ -81,24 +79,24 @@ func (n *networkHandler) isPodAvailableEvent(event watch.Event) (bool, error) {
 }
 
 //This function waits for a pod to be either running or already complete.
-func (n *networkHandler) waitForPodAvailable(ctx context.Context, pod *core.Pod) (result *core.Pod, err error) {
+func (n *networkHandler) waitForPodAvailable(ctx context.Context) (err error) {
 
 	fieldSelector := fields.
-		OneTermEqualSelector("metadata.name", pod.Name).
+		OneTermEqualSelector("metadata.name", n.pod.Name).
 		String()
 	listWatch := &cache.ListWatch{
 		ListFunc: func(options meta.ListOptions) (runtime.Object, error) {
 			options.FieldSelector = fieldSelector
 			return n.cli.
 				CoreV1().
-				Pods(pod.Namespace).
+				Pods(n.pod.Namespace).
 				List(ctx, options)
 		},
 		WatchFunc: func(options meta.ListOptions) (watch.Interface, error) {
 			options.FieldSelector = fieldSelector
 			return n.cli.
 				CoreV1().
-				Pods(pod.Namespace).
+				Pods(n.pod.Namespace).
 				Watch(ctx, options)
 		},
 	}
@@ -111,9 +109,9 @@ func (n *networkHandler) waitForPodAvailable(ctx context.Context, pod *core.Pod)
 		n.isPodAvailableEvent,
 	)
 	if event != nil {
-		result = event.Object.(*core.Pod)
+		n.pod = event.Object.(*core.Pod)
 	}
-	return result, err
+	return err
 }
 
 func (n *networkHandler) OnHandshakeSuccess(username string) (connection sshserver.SSHConnectionHandler, failureReason error) {
@@ -154,14 +152,14 @@ func (n *networkHandler) OnHandshakeSuccess(username string) (connection sshserv
 		"containerssh_username":      username,
 	}
 
-	pod, err := n.createPod(ctx, spec)
-	n.pod = pod
+	var err error
+	n.pod, err = n.createPod(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
 
 	n.mutex.Unlock()
-	pod, err = n.waitForPodAvailable(ctx, pod)
+	err = n.waitForPodAvailable(ctx)
 	n.mutex.Lock()
 	if err != nil {
 		return nil, err
@@ -225,8 +223,8 @@ func (n *networkHandler) OnDisconnect() {
 				Body(&meta.DeleteOptions{})
 			result := request.Do(shutdownContext)
 			if result.Error() != nil {
-				n.logger.Warningf("failed to remove pod, retrying in 10 seconds (%v)", result.Error())
 				lastError = result.Error()
+				n.logger.Warningf("failed to remove pod, retrying in 10 seconds (%v)", lastError)
 				n.mutex.Unlock()
 				select {
 				case <-shutdownContext.Done():

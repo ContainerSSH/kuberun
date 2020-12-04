@@ -124,6 +124,19 @@ func (c *channelHandler) streamIO(
 	container corev1.Container,
 	exit func(exitStatus sshserver.ExitStatus),
 ) {
+	c.initTerminalSizeQueue()
+
+	c.stream(program, container, stdin, stdout, stderr, exit)
+}
+
+func (c *channelHandler) stream(
+	program []string,
+	container corev1.Container,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+	exit func(exitStatus sshserver.ExitStatus),
+) {
 	req := c.networkHandler.restClient.Post().
 		Resource("pods").
 		Name(c.networkHandler.pod.Name).
@@ -140,13 +153,6 @@ func (c *channelHandler) streamIO(
 		},
 		scheme.ParameterCodec,
 	)
-
-	if c.pty {
-		c.terminalSizeQueue.Push(remotecommand.TerminalSize{
-			Width:  uint16(c.columns),
-			Height: uint16(c.rows),
-		})
-	}
 
 	exec, err := remotecommand.NewSPDYExecutor(
 		&c.networkHandler.restClientConfig,
@@ -177,6 +183,17 @@ func (c *channelHandler) streamIO(
 		return
 	} else {
 		exit(0)
+	}
+}
+
+func (c *channelHandler) initTerminalSizeQueue() {
+	if c.pty {
+		c.terminalSizeQueue.Push(
+			remotecommand.TerminalSize{
+				Width:  uint16(c.columns),
+				Height: uint16(c.rows),
+			},
+		)
 	}
 }
 
