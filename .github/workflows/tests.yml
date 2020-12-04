@@ -10,7 +10,7 @@ jobs:
       - test_1_18
       - test_1_19
     steps:
-      - run: "All tests complete"
+      - run: "echo 'All tests complete'"
   test_1_18:
     name: Run tests against k8s 1.18
     runs-on: ubuntu-latest
