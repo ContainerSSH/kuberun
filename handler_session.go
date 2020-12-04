@@ -1,81 +1,235 @@
 package kuberun
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/containerssh/sshserver"
+	"github.com/mattn/go-shellwords"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/remotecommand"
+	execUtil "k8s.io/client-go/util/exec"
+	"k8s.io/kubectl/pkg/scheme"
 )
 
-type sessionHandler struct {
-	networkHandler *networkHandler
-	env            map[string]string
-	sshHandler     *sshConnectionHandler
-	running        bool
-	pty            bool
-	columns        uint32
-	rows           uint32
-	channelID      uint64
+type channelHandler struct {
+	networkHandler    *networkHandler
+	env               map[string]string
+	sshHandler        *sshConnectionHandler
+	running           bool
+	pty               bool
+	columns           uint32
+	rows              uint32
+	channelID         uint64
+	terminalSizeQueue PushSizeQueue
 }
 
-func (s *sessionHandler) OnUnsupportedChannelRequest(_ uint64, _ string, _ []byte) {}
+type PushSizeQueue interface {
+	remotecommand.TerminalSizeQueue
 
-func (s *sessionHandler) OnFailedDecodeChannelRequest(_ uint64, _ string, _ []byte, _ error) {}
+	Push(remotecommand.TerminalSize)
+}
 
-func (s *sessionHandler) OnEnvRequest(_ uint64, name string, value string) error {
-	s.sshHandler.mutex.Lock()
-	defer s.sshHandler.mutex.Unlock()
-	if s.running {
+type sizeQueue struct {
+	resizeChan chan remotecommand.TerminalSize
+}
+
+func (s *sizeQueue) Push(size remotecommand.TerminalSize) {
+	s.resizeChan <- size
+}
+
+func (s *sizeQueue) Next() *remotecommand.TerminalSize {
+	size, ok := <-s.resizeChan
+	if !ok {
+		return nil
+	}
+	return &size
+}
+
+func (c *channelHandler) OnUnsupportedChannelRequest(_ uint64, _ string, _ []byte) {}
+
+func (c *channelHandler) OnFailedDecodeChannelRequest(_ uint64, _ string, _ []byte, _ error) {}
+
+func (c *channelHandler) OnEnvRequest(_ uint64, name string, value string) error {
+	c.sshHandler.mutex.Lock()
+	defer c.sshHandler.mutex.Unlock()
+	if c.running {
 		return fmt.Errorf("program already running")
 	}
-	s.env[name] = value
+	c.env[name] = value
 	return nil
 }
 
-func (s *sessionHandler) OnPtyRequest(_ uint64, term string, columns uint32, rows uint32, _ uint32, _ uint32, _ []byte) error {
-	s.sshHandler.mutex.Lock()
-	defer s.sshHandler.mutex.Unlock()
-	if s.running {
+func (c *channelHandler) OnPtyRequest(
+	_ uint64,
+	term string,
+	columns uint32,
+	rows uint32,
+	_ uint32,
+	_ uint32,
+	_ []byte,
+) error {
+	c.sshHandler.mutex.Lock()
+	defer c.sshHandler.mutex.Unlock()
+	if c.running {
 		return fmt.Errorf("program already running")
 	}
-	s.env["TERM"] = term
-	s.pty = true
-	s.columns = columns
-	s.rows = rows
+	c.env["TERM"] = term
+	c.pty = true
+	c.columns = columns
+	c.rows = rows
 	return nil
 }
 
-func (s *sessionHandler) OnExecRequest(_ uint64, program string, stdin io.Reader, stdout io.Writer, stderr io.Writer, onExit func(exitStatus sshserver.ExitStatus)) error {
-	s.sshHandler.mutex.Lock()
-	defer s.sshHandler.mutex.Unlock()
+func (c *channelHandler) parseProgram(program string) []string {
+	programParts, err := shellwords.Parse(program)
+	if err != nil {
+		return []string{"/bin/sh", "-c", program}
+	} else {
+		if strings.HasPrefix(programParts[0], "/") || strings.HasPrefix(
+			programParts[0],
+			"./",
+		) || strings.HasPrefix(programParts[0], "../") {
+			return programParts
+		} else {
+			return []string{"/bin/sh", "-c", program}
+		}
+	}
+}
+
+func (c *channelHandler) run(
+	program []string,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+	onExit func(exitStatus sshserver.ExitStatus),
+) error {
+	c.networkHandler.mutex.Lock()
+	defer c.networkHandler.mutex.Unlock()
+
+	container := c.networkHandler.pod.Spec.Containers[c.networkHandler.config.Pod.ConsoleContainerNumber]
+
+	go c.streamIO(program, stdin, stdout, stderr, container, onExit)
 
 	return nil
 }
 
-func (s *sessionHandler) OnShell(_ uint64, stdin io.Reader, stdout io.Writer, stderr io.Writer, onExit func(exitStatus sshserver.ExitStatus)) error {
-	s.sshHandler.mutex.Lock()
-	s.sshHandler.mutex.Unlock()
+func (c *channelHandler) streamIO(
+	program []string,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+	container corev1.Container,
+	exit func(exitStatus sshserver.ExitStatus),
+) {
+	req := c.networkHandler.restClient.Post().
+		Resource("pods").
+		Name(c.networkHandler.pod.Name).
+		Namespace(c.networkHandler.pod.Namespace).
+		SubResource("exec")
+	req.VersionedParams(
+		&corev1.PodExecOptions{
+			Container: container.Name,
+			Command:   program,
+			Stdin:     true,
+			Stdout:    true,
+			Stderr:    true,
+			TTY:       c.pty,
+		},
+		scheme.ParameterCodec,
+	)
 
-	return nil
+	if c.pty {
+		c.terminalSizeQueue.Push(remotecommand.TerminalSize{
+			Width:  uint16(c.columns),
+			Height: uint16(c.rows),
+		})
+	}
+
+	exec, err := remotecommand.NewSPDYExecutor(
+		&c.networkHandler.restClientConfig,
+		"POST",
+		req.URL(),
+	)
+	if err != nil {
+		exit(137)
+		c.networkHandler.logger.Warningf("failed to stream IO (%v)", err)
+		return
+	}
+	if err := exec.Stream(
+		remotecommand.StreamOptions{
+			Stdin:             stdin,
+			Stdout:            stdout,
+			Stderr:            stderr,
+			Tty:               c.pty,
+			TerminalSizeQueue: c.terminalSizeQueue,
+		},
+	); err != nil {
+		exitErr := execUtil.CodeExitError{}
+		if errors.As(err, &exitErr) {
+			exit(sshserver.ExitStatus(exitErr.Code))
+			return
+		}
+		c.networkHandler.logger.Warningf("failed to stream IO (%v)", err)
+		exit(137)
+		return
+	} else {
+		exit(0)
+	}
 }
 
-func (s *sessionHandler) OnSubsystem(_ uint64, subsystem string, stdin io.Reader, stdout io.Writer, stderr io.Writer, onExit func(exitStatus sshserver.ExitStatus)) error {
-	s.sshHandler.mutex.Lock()
-	s.sshHandler.mutex.Unlock()
-
-	return nil
+func (c *channelHandler) OnExecRequest(
+	_ uint64,
+	program string,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+	onExit func(exitStatus sshserver.ExitStatus),
+) error {
+	return c.run(c.parseProgram(program), stdin, stdout, stderr, onExit)
 }
 
-func (s *sessionHandler) OnSignal(_ uint64, _ string) error {
+func (c *channelHandler) OnShell(
+	_ uint64,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+	onExit func(exitStatus sshserver.ExitStatus),
+) error {
+	return c.run(nil, stdin, stdout, stderr, onExit)
+}
+
+func (c *channelHandler) OnSubsystem(
+	_ uint64,
+	subsystem string,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+	onExit func(exitStatus sshserver.ExitStatus),
+) error {
+	if binary, ok := c.networkHandler.config.Pod.Subsystems[subsystem]; ok {
+		return c.run([]string{binary}, stdin, stdout, stderr, onExit)
+	}
+	return fmt.Errorf("subsystem not supported")
+}
+
+func (c *channelHandler) OnSignal(_ uint64, _ string) error {
 	return fmt.Errorf("signals are not supported")
 }
 
-func (s *sessionHandler) OnWindow(_ uint64, columns uint32, rows uint32, _ uint32, _ uint32) error {
-	s.sshHandler.mutex.Lock()
-	defer s.sshHandler.mutex.Unlock()
-	if !s.running {
+func (c *channelHandler) OnWindow(_ uint64, columns uint32, rows uint32, _ uint32, _ uint32) error {
+	c.sshHandler.mutex.Lock()
+	defer c.sshHandler.mutex.Unlock()
+	if !c.running {
 		return fmt.Errorf("program not running")
 	}
+
+	c.terminalSizeQueue.Push(remotecommand.TerminalSize{
+		Width:  uint16(columns),
+		Height: uint16(rows),
+	})
 
 	return nil
 }

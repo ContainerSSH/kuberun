@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/containerssh/log"
 	v1 "k8s.io/api/core/v1"
@@ -26,18 +27,19 @@ func New(config Config, connectionID []byte, client net.TCPAddr, logger log.Logg
 	}
 
 	return &networkHandler{
-		mutex:        &sync.Mutex{},
-		client:       client,
-		connectionID: connectionID,
-		config:       config,
-		onDisconnect: map[uint64]func(){},
-		onShutdown:   map[uint64]func(shutdownContext context.Context){},
-		cli:          cli,
-		restClient:   restClient,
-		pod:          nil,
-		cancelStart:  nil,
-		labels:       nil,
-		logger:       logger,
+		restClientConfig: connectionConfig,
+		mutex:            &sync.Mutex{},
+		client:           client,
+		connectionID:     connectionID,
+		config:           config,
+		onDisconnect:     map[uint64]func(){},
+		onShutdown:       map[uint64]func(shutdownContext context.Context){},
+		cli:              cli,
+		restClient:       restClient,
+		pod:              nil,
+		cancelStart:      nil,
+		labels:           nil,
+		logger:           logger,
 	}, nil
 }
 
@@ -67,6 +69,6 @@ func createConnectionConfig(config Config) restclient.Config {
 		UserAgent: "ContainerSSH",
 		QPS:       config.Connection.QPS,
 		Burst:     config.Connection.Burst,
-		Timeout:   config.Connection.Timeout,
+		Timeout:   60 * time.Second,
 	}
 }

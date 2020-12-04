@@ -34,12 +34,13 @@ type networkHandler struct {
 	onDisconnect map[uint64]func()
 	onShutdown   map[uint64]func(shutdownContext context.Context)
 
-	cli         *kubernetes.Clientset
-	restClient  *restclient.RESTClient
-	pod         *core.Pod
-	cancelStart func()
-	labels      map[string]string
-	logger      log.Logger
+	cli              *kubernetes.Clientset
+	restClient       *restclient.RESTClient
+	pod              *core.Pod
+	cancelStart      func()
+	labels           map[string]string
+	logger           log.Logger
+	restClientConfig restclient.Config
 }
 
 func (n *networkHandler) OnAuthPassword(_ string, _ []byte) (response sshserver.AuthResponse, reason error) {
