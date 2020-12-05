@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/containerssh/sshserver"
-	"github.com/mattn/go-shellwords"
+	"github.com/containerssh/unixutils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/remotecommand"
 	execUtil "k8s.io/client-go/util/exec"
@@ -84,7 +84,7 @@ func (c *channelHandler) OnPtyRequest(
 }
 
 func (c *channelHandler) parseProgram(program string) []string {
-	programParts, err := shellwords.Parse(program)
+	programParts, err := unixutils.ParseCMD(program)
 	if err != nil {
 		return []string{"/bin/sh", "-c", program}
 	} else {

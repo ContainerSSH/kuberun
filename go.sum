@@ -55,6 +55,8 @@ github.com/containerssh/service v0.9.0 h1:JUHqiK12tclq7EWQYGRTfgKKw6fhHs0gxlKWTv
 github.com/containerssh/service v0.9.0/go.mod h1:otAKYF1MWy2eB0K7Sk7YQIECQMTHR3yikbyS1UstGpY=
 github.com/containerssh/sshserver v0.9.6 h1:jt9/Wx4E9uSYJl6pkNyFCOlzs700gVs5PjMR1Rchz+8=
 github.com/containerssh/sshserver v0.9.6/go.mod h1:sX9Z1ch2yFk30MXQvOKLa8h9V4wex0Nct2mNGYHBTbY=
+github.com/containerssh/unixutils v0.9.0 h1:9Bh2UiQW6DIuVW6upc1uUU38tKK1IUn2hxZqi9w3cQc=
+github.com/containerssh/unixutils v0.9.0/go.mod h1:k1Z/lsIUK95UzrlqRw2JWDDi6LGeL7wG+V+N+TWkCbU=
 github.com/coreos/bbolt v1.3.2/go.mod h1:iRUV2dpdMOn7Bo10OQBFzIJO9kkE559Wcmn+qkEiiKk=
 github.com/coreos/etcd v3.3.10+incompatible/go.mod h1:uF7uidLiAD3TWHmW31ZFd/JWoc32PjwdhPthX9715RE=
 github.com/coreos/go-semver v0.2.0/go.mod h1:nnelYz7RCh+5ahJtPPxZlU+153eP4D4r3EedlOD2RNk=
