@@ -47,7 +47,7 @@ func (n *networkHandler) OnAuthPassword(_ string, _ []byte) (response sshserver.
 	return sshserver.AuthResponseUnavailable, fmt.Errorf("the backend handler does not support authentication")
 }
 
-func (n *networkHandler) OnAuthPubKey(_ string, _ []byte) (response sshserver.AuthResponse, reason error) {
+func (n *networkHandler) OnAuthPubKey(_ string, _ string) (response sshserver.AuthResponse, reason error) {
 	return sshserver.AuthResponseUnavailable, fmt.Errorf("the backend handler does not support authentication")
 }
 
@@ -141,7 +141,6 @@ func (n *networkHandler) OnHandshakeSuccess(username string) (connection sshserv
 		goLog.SetOutput(oldOutput)
 		goLog.SetPrefix(oldPrefix)
 	}()
-	// TODO set logger redirection because the Kubernetes libraries log using the default logger.
 
 	spec := n.config.Pod.Spec
 
