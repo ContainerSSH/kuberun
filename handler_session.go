@@ -205,6 +205,9 @@ func (c *channelHandler) OnExecRequest(
 	stderr io.Writer,
 	onExit func(exitStatus sshserver.ExitStatus),
 ) error {
+	if c.networkHandler.config.Pod.DisableCommand {
+		return fmt.Errorf("command execution is disabled")
+	}
 	return c.run(c.parseProgram(program), stdin, stdout, stderr, onExit)
 }
 
