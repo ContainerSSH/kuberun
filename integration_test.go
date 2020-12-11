@@ -1,63 +1,50 @@
-package kuberun
+package kuberun_test
 
 import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"net"
+	"os"
 	"testing"
 
-	"github.com/containerssh/log/standard"
+	"github.com/containerssh/log"
 	"github.com/containerssh/sshserver"
 	"github.com/containerssh/structutils"
 	"github.com/stretchr/testify/assert"
 	v1Api "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/containerssh/kuberun"
 )
 
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randomID() []byte {
-	randomBytes := make([]byte, 16)
-	for i := range randomBytes {
-		randomBytes[i] = byte(letters[rand.Intn(len(letters))])
-	}
-	return randomBytes
-}
-
 func TestSuccessfulHandshakeShouldCreatePod(t *testing.T) {
-	config := Config{}
+	config := kuberun.Config{}
 	structutils.Defaults(&config)
 
 	config.Pod.Spec.Containers[0].Image = "docker.io/library/busybox"
 
-	if err := setConfigFromKubeConfig(&config); err != nil {
+	if err := kuberun.SetConfigFromKubeConfig(&config); err != nil {
 		assert.FailNow(t, "failed to create configuration from the current users kubeconfig (%v)", err)
 	}
 
-	connectionID := randomID()
+	connectionID := sshserver.GenerateConnectionID()
+	logger := getLogger(t)
 
-	kr, err := New(config, connectionID, net.TCPAddr{
-		IP:   net.ParseIP("127.0.0.1"),
-		Port: 2222,
-		Zone: "",
-	}, standard.New())
-	assert.Nil(t, err, "failed to create handler (%v)", err)
+	kr := createKuberun(t, connectionID, config, logger)
 	defer kr.OnDisconnect()
 
-	_, err = kr.OnHandshakeSuccess("test")
+	_, err := kr.OnHandshakeSuccess("test")
 	assert.Nil(t, err, "failed to create handshake handler (%v)", err)
 
-	k8sConfig := createConnectionConfig(config)
+	k8sConfig := kuberun.CreateConnectionConfig(config)
 	cli, err := kubernetes.NewForConfig(&k8sConfig)
 	assert.Nil(t, err, "failed to create k8s client (%v)", err)
 
 	podList, err := cli.CoreV1().Pods(config.Pod.Namespace).List(context.Background(), v1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s", "containerssh_connection_id", hex.EncodeToString(connectionID)),
+		LabelSelector: fmt.Sprintf("%s=%s", "containerssh_connection_id", connectionID),
 	})
 	assert.Nil(t, err, "failed to list k8s pods (%v)", err)
 	assert.Equal(t, 1, len(podList.Items))
@@ -65,22 +52,52 @@ func TestSuccessfulHandshakeShouldCreatePod(t *testing.T) {
 	assert.Equal(t, true, *podList.Items[0].Status.ContainerStatuses[0].Started)
 }
 
+func createKuberun(
+	t *testing.T,
+	connectionID string,
+	config kuberun.Config,
+	logger log.Logger,
+) sshserver.NetworkConnectionHandler {
+	kr, err := kuberun.New(
+		net.TCPAddr{
+			IP:   net.ParseIP("127.0.0.1"),
+			Port: 2222,
+			Zone: "",
+		},
+		connectionID,
+		config,
+		logger,
+	)
+	assert.NoError(t, err, "failed to create handler (%v)", err)
+	return kr
+}
+
+func getLogger(t *testing.T) log.Logger {
+	logger, err := log.New(
+		log.Config{
+			Level:  log.LevelDebug,
+			Format: log.FormatText,
+		},
+		"kuberun",
+		os.Stdout,
+	)
+	assert.NoError(t, err)
+	return logger
+}
+
 func TestSingleSessionShouldRunProgram(t *testing.T) {
-	config := Config{}
+	config := kuberun.Config{}
 	structutils.Defaults(&config)
 
 	config.Pod.Spec.Containers[0].Image = "docker.io/library/busybox"
 
-	err := setConfigFromKubeConfig(&config)
-	assert.Nil(t, err, "failed to set up kube config (%v)", err)
+	err := kuberun.SetConfigFromKubeConfig(&config)
+	assert.NoError(t, err, "failed to set up kube config (%v)", err)
 
-	connectionID := randomID()
+	connectionID := sshserver.GenerateConnectionID()
 
-	kr, err := New(config, connectionID, net.TCPAddr{
-		IP:   net.ParseIP("127.0.0.1"),
-		Port: 2222,
-		Zone: "",
-	}, standard.New())
+	logger := getLogger(t)
+	kr := createKuberun(t, connectionID, config, logger)
 	assert.Nil(t, err, "failed to create handler (%v)", err)
 	defer kr.OnDisconnect()
 
@@ -117,22 +134,18 @@ func TestSingleSessionShouldRunProgram(t *testing.T) {
 }
 
 func TestCommandExecutionShouldReturnStatusCode(t *testing.T) {
-	config := Config{}
+	config := kuberun.Config{}
 	structutils.Defaults(&config)
 
 	config.Pod.Spec.Containers[0].Image = "docker.io/library/busybox"
 
-	err := setConfigFromKubeConfig(&config)
+	err := kuberun.SetConfigFromKubeConfig(&config)
 	assert.Nil(t, err, "failed to set up kube config (%v)", err)
 
-	connectionID := randomID()
+	connectionID := sshserver.GenerateConnectionID()
+	logger := getLogger(t)
 
-	kr, err := New(config, connectionID, net.TCPAddr{
-		IP:   net.ParseIP("127.0.0.1"),
-		Port: 2222,
-		Zone: "",
-	}, standard.New())
-	assert.Nil(t, err, "failed to create handler (%v)", err)
+	kr := createKuberun(t, connectionID, config, logger)
 	defer kr.OnDisconnect()
 
 	ssh, err := kr.OnHandshakeSuccess("test")

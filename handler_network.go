@@ -2,7 +2,6 @@ package kuberun
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	goLog "log"
 	"net"
@@ -27,7 +26,7 @@ import (
 type networkHandler struct {
 	mutex        *sync.Mutex
 	client       net.TCPAddr
-	connectionID []byte
+	connectionID string
 	config       Config
 
 	// onDisconnect contains a per-channel disconnect handler
@@ -146,7 +145,7 @@ func (n *networkHandler) OnHandshakeSuccess(username string) (connection sshserv
 
 	spec.Containers[n.config.Pod.ConsoleContainerNumber].Command = n.config.Pod.IdleCommand
 	n.labels = map[string]string{
-		"containerssh_connection_id": hex.EncodeToString(n.connectionID),
+		"containerssh_connection_id": n.connectionID,
 		"containerssh_ip":            n.client.IP.String(),
 		"containerssh_username":      username,
 	}
