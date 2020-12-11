@@ -12,7 +12,7 @@ import (
 
 	"github.com/containerssh/log/standard"
 	"github.com/containerssh/sshserver"
-	"github.com/creasty/defaults"
+	"github.com/containerssh/structutils"
 	"github.com/stretchr/testify/assert"
 	v1Api "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,8 +31,7 @@ func randomID() []byte {
 
 func TestSuccessfulHandshakeShouldCreatePod(t *testing.T) {
 	config := Config{}
-	err := defaults.Set(&config)
-	assert.Nil(t, err, "failed to set defaults (%v)", err)
+	structutils.Defaults(&config)
 
 	config.Pod.Spec.Containers[0].Image = "docker.io/library/busybox"
 
@@ -68,12 +67,11 @@ func TestSuccessfulHandshakeShouldCreatePod(t *testing.T) {
 
 func TestSingleSessionShouldRunProgram(t *testing.T) {
 	config := Config{}
-	err := defaults.Set(&config)
-	assert.Nil(t, err, "failed to set defaults (%v)", err)
+	structutils.Defaults(&config)
 
 	config.Pod.Spec.Containers[0].Image = "docker.io/library/busybox"
 
-	err = setConfigFromKubeConfig(&config)
+	err := setConfigFromKubeConfig(&config)
 	assert.Nil(t, err, "failed to set up kube config (%v)", err)
 
 	connectionID := randomID()
@@ -120,12 +118,11 @@ func TestSingleSessionShouldRunProgram(t *testing.T) {
 
 func TestCommandExecutionShouldReturnStatusCode(t *testing.T) {
 	config := Config{}
-	err := defaults.Set(&config)
-	assert.Nil(t, err, "failed to set defaults (%v)", err)
+	structutils.Defaults(&config)
 
 	config.Pod.Spec.Containers[0].Image = "docker.io/library/busybox"
 
-	err = setConfigFromKubeConfig(&config)
+	err := setConfigFromKubeConfig(&config)
 	assert.Nil(t, err, "failed to set up kube config (%v)", err)
 
 	connectionID := randomID()
