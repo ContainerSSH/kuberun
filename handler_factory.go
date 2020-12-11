@@ -7,14 +7,15 @@ import (
 	"time"
 
 	"github.com/containerssh/log"
+	"github.com/containerssh/sshserver"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
 )
 
-func New(config Config, connectionID []byte, client net.TCPAddr, logger log.Logger) (*networkHandler, error) {
-	connectionConfig := createConnectionConfig(config)
+func New(client net.TCPAddr, connectionID string, config Config, logger log.Logger) (sshserver.NetworkConnectionHandler, error) {
+	connectionConfig := CreateConnectionConfig(config)
 
 	cli, err := kubernetes.NewForConfig(&connectionConfig)
 	if err != nil {
@@ -43,7 +44,8 @@ func New(config Config, connectionID []byte, client net.TCPAddr, logger log.Logg
 	}, nil
 }
 
-func createConnectionConfig(config Config) restclient.Config {
+// CreateConnectionConfig creates a Kubernetes REST client config from the kuberun config structure.
+func CreateConnectionConfig(config Config) restclient.Config {
 	return restclient.Config{
 		Host:    config.Connection.Host,
 		APIPath: config.Connection.APIPath,

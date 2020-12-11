@@ -11,7 +11,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func setConfigFromKubeConfig(config *Config) (err error) {
+// SetConfigFromKubeConfig attempts to load the kubeconfig from the current users home directory and use it as a source
+// for credentials. As ContainerSSH is intended to be run from an explicit config the use of this outside of test code
+// is strongly discouraged and will not be supported.
+func SetConfigFromKubeConfig(config *Config) (err error) {
 	usr, err := user.Current()
 	if err != nil {
 		return err
