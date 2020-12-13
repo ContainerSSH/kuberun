@@ -166,6 +166,7 @@ func (n *networkHandler) OnHandshakeSuccess(username string) (connection sshserv
 	return &sshConnectionHandler{
 		networkHandler: n,
 		username:       username,
+		mutex:          &sync.Mutex{},
 	}, nil
 }
 

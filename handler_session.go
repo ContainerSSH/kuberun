@@ -109,9 +109,17 @@ func (c *channelHandler) run(
 	c.networkHandler.mutex.Lock()
 	defer c.networkHandler.mutex.Unlock()
 
+	c.running = true
+
 	container := c.networkHandler.pod.Spec.Containers[c.networkHandler.config.Pod.ConsoleContainerNumber]
 
-	go c.streamIO(program, stdin, stdout, stderr, container, onExit)
+	go c.streamIO(program, stdin, stdout, stderr, container, func(exitStatus sshserver.ExitStatus) {
+		c.networkHandler.mutex.Lock()
+		defer c.networkHandler.mutex.Unlock()
+
+		c.running = false
+		onExit(exitStatus)
+	})
 
 	return nil
 }
@@ -188,12 +196,14 @@ func (c *channelHandler) stream(
 
 func (c *channelHandler) initTerminalSizeQueue() {
 	if c.pty {
-		c.terminalSizeQueue.Push(
-			remotecommand.TerminalSize{
-				Width:  uint16(c.columns),
-				Height: uint16(c.rows),
-			},
-		)
+		go func() {
+			c.terminalSizeQueue.Push(
+				remotecommand.TerminalSize{
+					Width:  uint16(c.columns),
+					Height: uint16(c.rows),
+				},
+			)
+		}()
 	}
 }
 
@@ -205,9 +215,6 @@ func (c *channelHandler) OnExecRequest(
 	stderr io.Writer,
 	onExit func(exitStatus sshserver.ExitStatus),
 ) error {
-	if c.networkHandler.config.Pod.DisableCommand {
-		return fmt.Errorf("command execution is disabled")
-	}
 	return c.run(c.parseProgram(program), stdin, stdout, stderr, onExit)
 }
 
@@ -218,7 +225,7 @@ func (c *channelHandler) OnShell(
 	stderr io.Writer,
 	onExit func(exitStatus sshserver.ExitStatus),
 ) error {
-	return c.run(nil, stdin, stdout, stderr, onExit)
+	return c.run(c.networkHandler.config.Pod.ShellCommand, stdin, stdout, stderr, onExit)
 }
 
 func (c *channelHandler) OnSubsystem(
