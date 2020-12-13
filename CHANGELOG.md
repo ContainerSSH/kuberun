@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.3: Testing, removed security options
+
+This release includes tests, bugfixes, and removes the `Disable*` options because they will be part of a separate security overlay.
+
 ## 0.9.2: Dependency updates (December 11, 2020)
 
 This release updates the [sshserver](https://github.com/containerssh/sshserver) to version `0.9.10` to match the latest API.
