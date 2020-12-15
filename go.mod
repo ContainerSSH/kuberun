@@ -4,7 +4,7 @@ go 1.14
 
 require (
 	github.com/containerssh/log v0.9.7
-	github.com/containerssh/sshserver v0.9.10
+	github.com/containerssh/sshserver v0.9.14
 	github.com/containerssh/structutils v0.9.0
 	github.com/containerssh/unixutils v0.9.0
 	github.com/stretchr/testify v1.6.1
