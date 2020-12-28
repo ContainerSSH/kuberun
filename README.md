@@ -1,10 +1,12 @@
-[![ContainerSSH - Launch Containers on Demand](https://containerssh.github.io/images/logo-for-embedding.svg)](https://containerssh.github.io/)
+[![ContainerSSH - Launch Containers on Demand](https://containerssh.io/deprecations/kuberun.png)](https://containerssh.github.io/)
 
 <!--suppress HtmlDeprecatedAttribute -->
-<h1 align="center">ContainerSSH Kubernetes Library</h1>
+<h1 align="center">⚠ The ContainerSSH KubeRun Backend is deprecated! ⚠</h1>
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/containerssh/kuberun?style=for-the-badge)](https://goreportcard.com/report/github.com/containerssh/kuberun)
 [![LGTM Alerts](https://img.shields.io/lgtm/alerts/github/ContainerSSH/kuberun?style=for-the-badge)](https://lgtm.com/projects/g/ContainerSSH/kuberun/)
+
+<p align="center">This backend is no longer maintained and <strong>replaced by the <a href="https://github.com/containerssh/kubernetes">kubernetes backend</a></strong>. Please see <a href="https://containerssh.io/deprecations/kuberun/">the deprecation notice for details</a>.</p>
 
 This library runs Kubernetes pods in integration with the [sshserver library](https://github.com/containerssh/sshserver).
 
