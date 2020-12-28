@@ -1,7 +1,7 @@
 [![ContainerSSH - Launch Containers on Demand](https://containerssh.io/deprecations/kuberun.png)](https://containerssh.github.io/)
 
 <!--suppress HtmlDeprecatedAttribute -->
-<h1 align="center">⚠ The ContainerSSH KubeRun Backend is deprecated! ⚠</h1>
+<h1 align="center">⚠ The KubeRun Backend is deprecated! ⚠</h1>
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/containerssh/kuberun?style=for-the-badge)](https://goreportcard.com/report/github.com/containerssh/kuberun)
 [![LGTM Alerts](https://img.shields.io/lgtm/alerts/github/ContainerSSH/kuberun?style=for-the-badge)](https://lgtm.com/projects/g/ContainerSSH/kuberun/)
